@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apiserver
+  labels:
+    app: apiserver
+spec:
+{{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.apiserver.replicaCount }}
+{{- end }}
+  selector:
+    matchLabels:
+      app: apiserver
+  strategy: 
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: apiserver
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: apiserver
+          securityContext:
+            {{- toYaml .Values.apiserver.securityContext | nindent 12 }}
+          image: "{{ .Values.apiserver.image.repository }}:{{ .Values.apiserver.image.tag }}"
+          imagePullPolicy: {{ .Values.apiserver.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.apiserver.resources | nindent 12 }}
+
+          ports:
+            {{- range .Values.apiserver.ports }}
+            - name: {{ .name }}
+              containerPort: {{ .port }}
+              protocol: {{ .protocol | upper }}
+            {{- end }}
+
+          env:
+            {{- range .Values.apiserver.envs }}
+            - name: {{ .name }}
+              value: "{{ .value }}"
+            {{- end }}
+
+          volumeMounts:
+            {{- range .Values.apiserver.mounts }}
+            - name: {{ .name }}-m
+              mountPath: {{ .path }}
+              {{ if hasKey . "subPath" }}subPath: {{ .subPath }}{{ end }}
+            {{- end }}
+
+          {{ if hasKey $.Values.apiserver "envsFrom" }}
+          envFrom:
+            {{- range .Values.apiserver.envsFrom}}
+            - {{ .type }}:
+                name: {{ .name }}
+            {{- end }}
+          {{ end }}
+
+          {{ if hasKey $.Values.apiserver "cmd" }}
+          args:
+            {{- range .Values.apiserver.cmd}}
+            - {{ . }}
+            {{- end }}
+          {{ end }}
+      initContainers:
+        - name: helper
+          image: "alpine:3.15"
+          volumeMounts:
+            {{- range .Values.apiserver.mounts }}
+            - name: {{ .name }}-m
+              mountPath: {{ .path }}
+              {{ if hasKey . "subPath" }}subPath: {{ .subPath }}{{ end }}
+            {{- end }}
+          command:
+          - /bin/chown
+          - "1001.1001"
+          - /bitnami/kafka
+          - -R
+
+        
+      volumes:
+        {{- range .Values.apiserver.mounts }}
+        - name: {{ .name }}-m
+          {{ .type }}:
+            {{ if eq .type "configMap" }}name: {{ .name }}{{ end }}
+            {{ if eq .type "hostPath" }}path: {{ .pathSrc }}{{ end }}
+        {{- end }}
+      hostAliases:
+        {{- range .Values.apiserver.hosts }}
+        - hostnames:
+          {{- range .name }}
+          - {{ . }}
+          {{- end }}
+          ip: {{ .ip }}
+        {{ end }}

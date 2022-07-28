@@ -1,0 +1,31 @@
+{{- range .Values.apiserver.ports }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .name }}
+  {{ if hasKey . "annotations" }}
+  annotations:
+  {{- with .annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+spec:
+  type: {{ .type }}
+  ports:
+    - name: {{ .name }}-p
+      targetPort: {{ .port }}
+      port: {{ .targetPort }}
+      protocol: {{ .protocol | upper }}
+      {{ if eq .type "NodePort" }}nodePort: {{ .targetPort }}{{ end }}
+  selector:
+    app: apiserver
+  {{ if hasKey . "bind" }}
+  externalIPs:
+  {{- range .bind }}
+  - {{ . }}
+  {{- end }}
+  externalTrafficPolicy: Cluster
+  {{ end }}
+---
+{{- end }}
+
